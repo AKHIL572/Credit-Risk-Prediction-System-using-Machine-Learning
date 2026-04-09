@@ -1,0 +1,13 @@
+paths:
+  data:
+    raw: "data/raw/dataset.csv"
+    processed: "data/processed/"
+  models:
+    model: "models/credit_risk_model.joblib"
+    features: "models/expected_features.joblib"
+    metrics: "models/model_metrics.json"
+
+training:
+  test_size: 0.2
+  random_state: 42
+  target_column: "target"

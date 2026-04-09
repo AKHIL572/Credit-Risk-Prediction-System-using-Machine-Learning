@@ -1,5 +1,6 @@
 # Dataset (too large)
-Dataset/*.csv
+data/raw/*.csv
+data/processed/*.csv
 
 # Power BI file
 *.pbix

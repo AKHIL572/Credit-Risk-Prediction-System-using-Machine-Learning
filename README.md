@@ -45,27 +45,48 @@ This is a **binary classification problem** with imbalanced classes.
 ```
 credit_risk_project/
 │
-├── Dataset/
-│ └── column_summary.csv # original dataset is too large
+├── data/
+│    ├── raw/
+│    │    └── dataset.csv
+│    ├── processed/
+│    │    └── dashboard_data*.csv
+│    └── metadata/
+│         └── column_summary.csv
 │
-├── Models/
-│ ├── credit_risk_model.joblib # Trained ML pipeline
-│ └── expected_features.joblib # Feature schema
+├── models/
+│    ├── credit_risk_model.joblib
+│    ├── expected_features.joblib
+│    └── model_metrics.json
 │
-├── Notebooks/
-│ ├── 1_data_understanding.ipynb
-│ ├── 2_data_preprocessing.ipynb
-│ └── 3_preprocessing_&_modelling.ipynb
+├── notebooks/
+│    ├── 1_data_understanding.ipynb
+│    ├── 2_data_preprocessing.ipynb
+│    ├── 3_modeling.ipynb
+│    └── 4_business_insights.ipynb
 │
 ├── src/
-│ ├── data_loader.py
-│ ├── preprocessing.py
-│ ├── train.py
-│ └── predict.py
+│    ├── __init__.py
+│    ├── data_loader.py
+│    ├── preprocessing.py
+│    ├── feature_engineering.py
+│    ├── train.py
+│    ├── evaluate.py
+│    └── predict.py
 │
-├── app.py # Streamlit application
+├── reports/
+│    ├── figures/
+│    └── credit_risk_dashboard.pdf
+│
+├── app/
+│    └── app.py
+│
+├── dashboard/
+│    └── credit_risk_dashboard.pbix
+│
+├── .gitignore
 ├── requirements.txt
-├── sample_input.csv # Sample data for testing
+├── config.yaml
+├── sample_input.csv
 └── README.md
 ```
 
@@ -83,7 +104,7 @@ The full dataset is **not included** in this repository due to GitHub size limit
 
 ### To use the full dataset:
 1. Download the dataset from Kaggle
-2. Place it inside the `Dataset/` folder
+2. Place it inside the `data/raw/` folder
 3. Rename it as `dataset.csv`
 
 ---
@@ -107,3 +128,8 @@ The full dataset is **not included** in this repository due to GitHub size limit
 ### 1️⃣ Install dependencies
 ```bash
 pip install -r requirements.txt
+
+### 2?? Run the Application
+```bash
+streamlit run app/app.py
+```

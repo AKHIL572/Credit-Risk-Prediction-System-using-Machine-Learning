@@ -21,8 +21,8 @@ st.markdown("Predict the probability of loan default using a trained Machine Lea
 # ===============================
 BASE_DIR = Path(__file__).resolve().parent
 
-MODEL_PATH = BASE_DIR / "Models" / "credit_risk_model.joblib"
-FEATURES_PATH = BASE_DIR / "Models" / "expected_features.joblib"
+MODEL_PATH = BASE_DIR / ".." / "models" / "credit_risk_model.joblib"
+FEATURES_PATH = BASE_DIR / ".." / "models" / "expected_features.joblib"
 
 # ===============================
 # Load model & metadata

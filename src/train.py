@@ -16,6 +16,8 @@ from sklearn.metrics import classification_report, roc_auc_score
 
 from src.data_loader import load_lendingclub_data
 from src.preprocessing import get_feature_types, build_preprocessor
+from src.feature_engineering import create_target
+from src.evaluate import evaluate_model, save_metrics
 
 
 # =========================
@@ -24,9 +26,10 @@ from src.preprocessing import get_feature_types, build_preprocessor
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(BASE_DIR)
 
-DATA_PATH = os.path.join(PROJECT_ROOT, "Dataset", "dataset.csv")
-MODEL_PATH = os.path.join(BASE_DIR, "credit_risk_model.joblib")
-FEATURES_PATH = os.path.join(BASE_DIR, "expected_features.joblib")
+DATA_PATH = os.path.join(PROJECT_ROOT, "data", "raw", "dataset.csv")
+MODEL_DIR = os.path.join(PROJECT_ROOT, "models")
+MODEL_PATH = os.path.join(MODEL_DIR, "credit_risk_model.joblib")
+FEATURES_PATH = os.path.join(MODEL_DIR, "expected_features.joblib")
 
 REQUIRED_COLS = [
     "loan_status", "loan_amnt", "term", "int_rate", "installment",
@@ -50,11 +53,7 @@ df = load_lendingclub_data(
 # =========================
 # 3. Target creation
 # =========================
-df["target"] = df["loan_status"].map({
-    "Fully Paid": 0,
-    "Charged Off": 1,
-    "Default": 1
-})
+df = create_target(df)
 
 X = df.drop(columns=["loan_status", "target"])
 y = df["target"]
@@ -201,7 +200,7 @@ print("Test ROC-AUC:", roc_auc_score(y_test, y_proba))
 # =========================
 # 10. Save artifacts
 # =========================
-MODEL_DIR = os.path.join(BASE_DIR, "..", "Models")
+MODEL_DIR = os.path.join(PROJECT_ROOT, "models")
 os.makedirs(MODEL_DIR, exist_ok=True)
 
 MODEL_PATH = os.path.join(MODEL_DIR, "credit_risk_model.joblib")
@@ -209,5 +208,8 @@ FEATURES_PATH = os.path.join(MODEL_DIR, "expected_features.joblib")
 
 joblib.dump(best_model, MODEL_PATH)
 joblib.dump(X_train.columns.tolist(), FEATURES_PATH)
+
+metrics = evaluate_model(y_test, y_pred, y_proba, model_name="Random Forest Default")
+save_metrics(metrics, os.path.join(MODEL_DIR, "model_metrics.json"))
 
 print(f"Model saved to {MODEL_PATH}")

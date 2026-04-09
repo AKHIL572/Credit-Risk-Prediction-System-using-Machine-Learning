@@ -8,9 +8,12 @@ import pandas as pd
 # 1. Paths
 # =========================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH = os.path.join(BASE_DIR, "credit_risk_model.joblib")
-FEATURES_PATH = os.path.join(BASE_DIR, "expected_features.joblib")
-OUTPUT_PATH = os.path.join(BASE_DIR, "output_predictions.csv")
+PROJECT_ROOT = os.path.dirname(BASE_DIR)
+MODEL_DIR = os.path.join(PROJECT_ROOT, "models")
+
+MODEL_PATH = os.path.join(MODEL_DIR, "credit_risk_model.joblib")
+FEATURES_PATH = os.path.join(MODEL_DIR, "expected_features.joblib")
+OUTPUT_PATH = os.path.join(PROJECT_ROOT, "data", "processed", "output_predictions.csv")
 
 
 # =========================
