@@ -1,0 +1,5 @@
+{
+    "model_name": "Random Forest",
+    "roc_auc": 0.0,
+    "classification_report": {}
+}
