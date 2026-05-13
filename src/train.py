@@ -16,9 +16,8 @@ from sklearn.metrics import classification_report, roc_auc_score
 
 from src.data_loader import load_lendingclub_data
 from src.preprocessing import get_feature_types, build_preprocessor
-from src.feature_engineering import create_target
 from src.evaluate import evaluate_model, save_metrics
-
+from src.feature_engineering import create_target, engineer_features
 
 # =========================
 # 1. Paths & Configuration
@@ -31,13 +30,14 @@ MODEL_DIR = os.path.join(PROJECT_ROOT, "models")
 MODEL_PATH = os.path.join(MODEL_DIR, "credit_risk_model.joblib")
 FEATURES_PATH = os.path.join(MODEL_DIR, "expected_features.joblib")
 
-REQUIRED_COLS = [
-    "loan_status", "loan_amnt", "term", "int_rate", "installment",
+FULL_FEATURES = [
+    "loan_amnt", "loan_term_numeric", "int_rate", "installment",
     "grade", "sub_grade", "emp_length", "home_ownership",
-    "annual_inc", "verification_status", "purpose", "dti",
-    "delinq_2yrs", "fico_range_low", "fico_range_high",
+    "annual_inc", "verification_status", "purpose",
+    "dti_capped", "delinq_2yrs", "fico_avg",
     "open_acc", "pub_rec", "revol_bal", "revol_util",
-    "total_acc", "application_type"
+    "total_acc", "application_type",
+    "loan_to_income", "installment_to_income"
 ]
 
 
@@ -46,7 +46,7 @@ REQUIRED_COLS = [
 # =========================
 df = load_lendingclub_data(
     file_path=DATA_PATH,
-    required_cols=REQUIRED_COLS
+    required_cols=FULL_FEATURES + ["loan_status"]
 )
 
 
@@ -54,8 +54,9 @@ df = load_lendingclub_data(
 # 3. Target creation
 # =========================
 df = create_target(df)
+df = engineer_features(df)
 
-X = df.drop(columns=["loan_status", "target"])
+X = df[FULL_FEATURES].copy()
 y = df["target"]
 
 
@@ -118,11 +119,11 @@ models = {
         random_state=42
     ),
     "Random Forest": RandomForestClassifier(
-        n_estimators=100,
-        max_depth=8,
+        n_estimators=50,
+        max_depth=6,
         class_weight="balanced",
         random_state=42,
-        n_jobs=-1
+        n_jobs=1
     )
 }
 
@@ -140,7 +141,7 @@ for name, clf in models.items():
         y_train,
         scoring="roc_auc",
         cv=cv,
-        n_jobs=-1
+        n_jobs=1
     )
 
     print(f"{name} CV ROC-AUC: {scores.mean():.4f}")
@@ -151,14 +152,9 @@ for name, clf in models.items():
 # =========================
 rf_pipeline = Pipeline([
     ("preprocessing", preprocessor),
-    (
-        "classifier",
-        RandomForestClassifier(
-            class_weight="balanced",
-            random_state=42,
-            n_jobs=-1
-        )
-    )
+    ("classifier", RandomForestClassifier(
+        class_weight="balanced", random_state=42, n_jobs=1
+    ))
 ])
 
 param_dist = {
@@ -209,7 +205,8 @@ FEATURES_PATH = os.path.join(MODEL_DIR, "expected_features.joblib")
 joblib.dump(best_model, MODEL_PATH)
 joblib.dump(X_train.columns.tolist(), FEATURES_PATH)
 
-metrics = evaluate_model(y_test, y_pred, y_proba, model_name="Random Forest Default")
+metrics = evaluate_model(y_test, y_pred, y_proba,
+                         model_name="Random Forest Default")
 save_metrics(metrics, os.path.join(MODEL_DIR, "model_metrics.json"))
 
 print(f"Model saved to {MODEL_PATH}")
