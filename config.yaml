@@ -3,11 +3,27 @@ paths:
     raw: "data/raw/dataset.csv"
     processed: "data/processed/"
   models:
-    model: "models/credit_risk_model.joblib"
-    features: "models/expected_features.joblib"
+    investor:
+      model: "models/credit_risk_model_investor.joblib"
+      features: "models/expected_features_investor.joblib"
+    underwriting:
+      model: "models/credit_risk_model_underwriting.joblib"
+      features: "models/expected_features_underwriting.joblib"
+    caps: "models/feature_caps.joblib"
     metrics: "models/model_metrics.json"
 
 training:
-  test_size: 0.2
+  test_size: 0.2          # kept for reference; the actual split is chronological
+                           # (80/20 by issue_d), not a random test_size split --
+                           # see src/train.py
   random_state: 42
   target_column: "target"
+  cv_splits: 3
+  improvement_threshold: 0.01   # a more complex model must beat the simplest
+                                 # model by at least this much mean CV ROC-AUC
+                                 # to be selected -- see src/train.py
+
+cost_assumptions:
+  # ILLUSTRATIVE, not verified institutional figures -- see notebooks/4_modeling.ipynb
+  loss_given_default_pct: 0.60
+  lost_margin_pct: 0.13
