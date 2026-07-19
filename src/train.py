@@ -1,212 +1,273 @@
-import os
-import joblib
-import pandas as pd
+"""
+Training script for the credit risk project.
 
-from sklearn.model_selection import (
-    train_test_split,
-    StratifiedKFold,
-    cross_val_score,
-    RandomizedSearchCV
-)
+Mirrors notebooks/4_modeling.ipynb exactly -- if you change the modeling
+approach in one, change it in the other, or run the risk of the "two
+disconnected implementations" problem this project had before (notebooks
+and src/ reimplementing the same logic independently and silently
+diverging).
+
+Trains TWO models for two distinct, explicitly named personas:
+- Investor Risk Model: full features (incl. sub_grade, int_rate) -- for
+  scoring already-listed loans.
+- Underwriting Screening Model: borrower-only features -- for screening a
+  new applicant who has not yet been graded/priced by LendingClub.
+"""
+
+import os
+import yaml
+import joblib
+import numpy as np
+import pandas as pd
+from scipy import stats
+
+from sklearn.model_selection import TimeSeriesSplit, cross_val_score, RandomizedSearchCV
 from sklearn.pipeline import Pipeline
 from sklearn.linear_model import LogisticRegression
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import classification_report, roc_auc_score
+from sklearn.metrics import roc_auc_score
+from sklearn.dummy import DummyClassifier
+from sklearn.inspection import permutation_importance
 
 from src.data_loader import load_lendingclub_data
-from src.preprocessing import get_feature_types, build_preprocessor
-from src.evaluate import evaluate_model, save_metrics
 from src.feature_engineering import create_target, engineer_features
+from src.preprocessing import get_feature_types, build_preprocessor
+from src.evaluate import evaluate_model, find_optimal_threshold, save_metrics
 
 # =========================
-# 1. Paths & Configuration
+# 1. Config
 # =========================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(BASE_DIR)
 
-DATA_PATH = os.path.join(PROJECT_ROOT, "data", "raw", "dataset.csv")
-MODEL_DIR = os.path.join(PROJECT_ROOT, "models")
-MODEL_PATH = os.path.join(MODEL_DIR, "credit_risk_model.joblib")
-FEATURES_PATH = os.path.join(MODEL_DIR, "expected_features.joblib")
+with open(os.path.join(PROJECT_ROOT, "config.yaml"), "r") as f:
+    config = yaml.safe_load(f)
 
-FULL_FEATURES = [
-    "loan_amnt", "loan_term_numeric", "int_rate", "installment",
-    "grade", "sub_grade", "emp_length", "home_ownership",
-    "annual_inc", "verification_status", "purpose",
-    "dti_capped", "delinq_2yrs", "fico_avg",
-    "open_acc", "pub_rec", "revol_bal", "revol_util",
-    "total_acc", "application_type",
-    "loan_to_income", "installment_to_income"
-]
-
-
-# =========================
-# 2. Load data (chunked)
-# =========================
-df = load_lendingclub_data(
-    file_path=DATA_PATH,
-    required_cols=FULL_FEATURES + ["loan_status"]
-)
-
-
-# =========================
-# 3. Target creation
-# =========================
-df = create_target(df)
-df = engineer_features(df)
-
-X = df[FULL_FEATURES].copy()
-y = df["target"]
-
-
-# =========================
-# 4. Train-test split
-# =========================
-X_train, X_test, y_train, y_test = train_test_split(
-    X,
-    y,
-    test_size=0.2,
-    stratify=y,
-    random_state=42
-)
-
-
-# =========================
-# 5. Preprocessing
-# =========================
-num_cols, cat_cols = get_feature_types(X_train)
-preprocessor = build_preprocessor(num_cols, cat_cols)
-
-
-# =========================
-# 6. Baseline model
-# =========================
-baseline_model = Pipeline([
-    ("preprocessing", preprocessor),
-    (
-        "classifier",
-        LogisticRegression(
-            max_iter=1000,
-            class_weight="balanced",
-            n_jobs=-1
-        )
-    )
-])
-
-baseline_model.fit(X_train, y_train)
-
-y_pred = baseline_model.predict(X_test)
-y_proba = baseline_model.predict_proba(X_test)[:, 1]
-
-print("\nBaseline Logistic Regression")
-print(classification_report(y_test, y_pred))
-print("ROC-AUC:", roc_auc_score(y_test, y_proba))
-
-
-# =========================
-# 7. Model comparison
-# =========================
-models = {
-    "Logistic Regression": LogisticRegression(
-        max_iter=1000,
-        class_weight="balanced",
-        n_jobs=-1
-    ),
-    "Decision Tree": DecisionTreeClassifier(
-        max_depth=6,
-        class_weight="balanced",
-        random_state=42
-    ),
-    "Random Forest": RandomForestClassifier(
-        n_estimators=50,
-        max_depth=6,
-        class_weight="balanced",
-        random_state=42,
-        n_jobs=1
-    )
-}
-
-cv = StratifiedKFold(n_splits=3, shuffle=True, random_state=42)
-
-for name, clf in models.items():
-    pipe = Pipeline([
-        ("preprocessing", preprocessor),
-        ("classifier", clf)
-    ])
-
-    scores = cross_val_score(
-        pipe,
-        X_train,
-        y_train,
-        scoring="roc_auc",
-        cv=cv,
-        n_jobs=1
-    )
-
-    print(f"{name} CV ROC-AUC: {scores.mean():.4f}")
-
-
-# =========================
-# 8. Hyperparameter tuning
-# =========================
-rf_pipeline = Pipeline([
-    ("preprocessing", preprocessor),
-    ("classifier", RandomForestClassifier(
-        class_weight="balanced", random_state=42, n_jobs=1
-    ))
-])
-
-param_dist = {
-    "classifier__n_estimators": [100, 150],
-    "classifier__max_depth": [6, 8],
-    "classifier__min_samples_split": [2, 5]
-}
-
-random_search = RandomizedSearchCV(
-    rf_pipeline,
-    param_distributions=param_dist,
-    n_iter=4,
-    scoring="roc_auc",
-    cv=3,
-    random_state=42,
-    n_jobs=1,   # memory-safe
-    verbose=2
-)
-
-random_search.fit(X_train, y_train)
-
-best_model = random_search.best_estimator_
-
-print("\nBest Params:", random_search.best_params_)
-print("Best CV ROC-AUC:", random_search.best_score_)
-
-
-# =========================
-# 9. Final evaluation
-# =========================
-y_pred = best_model.predict(X_test)
-y_proba = best_model.predict_proba(X_test)[:, 1]
-
-print("\nFinal Model Performance")
-print(classification_report(y_test, y_pred))
-print("Test ROC-AUC:", roc_auc_score(y_test, y_proba))
-
-
-# =========================
-# 10. Save artifacts
-# =========================
+DATA_PATH = os.path.join(PROJECT_ROOT, config["paths"]["data"]["raw"])
 MODEL_DIR = os.path.join(PROJECT_ROOT, "models")
 os.makedirs(MODEL_DIR, exist_ok=True)
 
-MODEL_PATH = os.path.join(MODEL_DIR, "credit_risk_model.joblib")
-FEATURES_PATH = os.path.join(MODEL_DIR, "expected_features.joblib")
+RANDOM_STATE = config["training"]["random_state"]
+CV_SPLITS = config["training"].get("cv_splits", 3)
+IMPROVEMENT_THRESHOLD = config["training"].get("improvement_threshold", 0.01)
+LGD_PCT = config["cost_assumptions"]["loss_given_default_pct"]
+MARGIN_PCT = config["cost_assumptions"]["lost_margin_pct"]
 
-joblib.dump(best_model, MODEL_PATH)
-joblib.dump(X_train.columns.tolist(), FEATURES_PATH)
+# issue_d is required for the chronological split -- NOT a model feature.
+RAW_REQUIRED_COLS = [
+    "loan_status", "loan_amnt", "term", "int_rate", "installment",
+    "grade", "sub_grade", "emp_length", "home_ownership",
+    "annual_inc", "verification_status", "purpose", "dti",
+    "delinq_2yrs", "fico_range_low", "fico_range_high",
+    "open_acc", "pub_rec", "revol_bal", "revol_util",
+    "total_acc", "application_type", "issue_d",
+]
 
-metrics = evaluate_model(y_test, y_pred, y_proba,
-                         model_name="Random Forest Default")
-save_metrics(metrics, os.path.join(MODEL_DIR, "model_metrics.json"))
+INVESTOR_FEATURES = [
+    "loan_amnt", "loan_term_numeric", "int_rate", "installment",
+    "sub_grade",  # grade dropped -- sub_grade subsumes it
+    "emp_length_numeric", "home_ownership",
+    "annual_inc_capped", "verification_status", "purpose",
+    "dti_capped", "delinq_2yrs", "fico_avg",
+    "open_acc", "pub_rec", "revol_bal", "revol_util",
+    "total_acc", "application_type",
+    "loan_to_income", "installment_to_income",
+]
+UNDERWRITING_FEATURES = [
+    f for f in INVESTOR_FEATURES if f not in ("sub_grade", "int_rate")]
 
-print(f"Model saved to {MODEL_PATH}")
+
+def main():
+    # =========================
+    # 2. Load, engineer, split chronologically
+    # =========================
+    print("Loading data...")
+    df = load_lendingclub_data(DATA_PATH, required_cols=RAW_REQUIRED_COLS)
+    df = create_target(df)
+    # training call -- computes caps fresh
+    df = engineer_features(df, caps=None)
+    caps = df.attrs["caps"]
+
+    df["issue_d_parsed"] = pd.to_datetime(
+        df["issue_d"], format="%b-%Y", errors="coerce")
+    df = df.sort_values("issue_d_parsed").reset_index(drop=True)
+
+    split_idx = int(len(df) * (1 - config["training"]["test_size"]))
+    split_date = df.loc[split_idx, "issue_d_parsed"]
+    train_df, test_df = df.iloc[:split_idx].copy(), df.iloc[split_idx:].copy()
+    y_train, y_test = train_df["target"], test_df["target"]
+
+    print(f"Split date: {split_date}")
+    print(f"Train: {len(train_df):,} rows | Test: {len(test_df):,} rows")
+
+    # =========================
+    # 3. Baselines
+    # =========================
+    dummy = DummyClassifier(strategy="most_frequent")
+    dummy.fit(train_df[["loan_amnt"]], y_train)
+    majority_baseline_acc = round(
+        dummy.score(test_df[["loan_amnt"]], y_test), 4)
+
+    subgrade_rank = train_df.groupby("sub_grade")["target"].mean()
+    test_subgrade_score = test_df["sub_grade"].map(subgrade_rank)
+    valid = test_subgrade_score.notna()
+    subgrade_baseline_auc = round(
+        roc_auc_score(y_test[valid], test_subgrade_score[valid]), 4
+    )
+    print(f"Majority-class baseline accuracy: {majority_baseline_acc}")
+    print(f"sub_grade-alone baseline ROC-AUC: {subgrade_baseline_auc}")
+
+    # =========================
+    # 4. Investor Model -- comparison, selection, tuning
+    # =========================
+    X_train_inv = train_df[INVESTOR_FEATURES]
+    X_test_inv = test_df[INVESTOR_FEATURES]
+    num_cols, cat_cols = get_feature_types(X_train_inv)
+    preprocessor_inv = build_preprocessor(num_cols, cat_cols)
+
+    candidate_models = {
+        "Logistic Regression": LogisticRegression(max_iter=1000, class_weight="balanced", n_jobs=-1),
+        "Decision Tree": DecisionTreeClassifier(max_depth=6, class_weight="balanced", random_state=RANDOM_STATE),
+        "Random Forest": RandomForestClassifier(
+            n_estimators=50, max_depth=6, class_weight="balanced",
+            random_state=RANDOM_STATE, n_jobs=-1
+        ),
+    }
+    simplicity_order = ["Logistic Regression",
+                        "Decision Tree", "Random Forest"]
+    tscv = TimeSeriesSplit(n_splits=CV_SPLITS)
+
+    cv_results = {}
+    for name in simplicity_order:
+        pipe = Pipeline([("preprocessing", preprocessor_inv),
+                        ("classifier", candidate_models[name])])
+        scores = cross_val_score(
+            pipe, X_train_inv, y_train, scoring="roc_auc", cv=tscv, n_jobs=-1)
+        cv_results[name] = scores
+        print(f"{name}: mean ROC-AUC = {scores.mean():.4f} (+/- {scores.std():.4f})")
+
+    # Explicit selection rule -- a more complex model must beat the simplest
+    # by more than IMPROVEMENT_THRESHOLD, backed by a paired t-test. This is
+    # the fix for the original project's unjustified Random Forest selection.
+    chosen_name = simplicity_order[0]
+    baseline_mean = cv_results[chosen_name].mean()
+    for name in simplicity_order[1:]:
+        improvement = cv_results[name].mean() - baseline_mean
+        t_stat, p_val = stats.ttest_rel(
+            cv_results[name], cv_results[simplicity_order[0]])
+        print(
+            f"{name} vs {simplicity_order[0]}: +{improvement:.4f} AUC, p={p_val:.4f}")
+        if improvement > IMPROVEMENT_THRESHOLD:
+            chosen_name = name
+            baseline_mean = cv_results[name].mean()
+    print(f"Selected model: {chosen_name} "
+          f"(no more complex model exceeded the simplest by more than {IMPROVEMENT_THRESHOLD} mean AUC)")
+
+    param_grids = {
+        "Logistic Regression": {"classifier__C": [0.01, 0.1, 1, 10]},
+        "Decision Tree": {"classifier__max_depth": [4, 6, 8], "classifier__min_samples_split": [2, 10, 50]},
+        "Random Forest": {"classifier__n_estimators": [100, 150], "classifier__max_depth": [6, 8],
+                          "classifier__min_samples_split": [2, 5]},
+    }
+    pipeline = Pipeline([("preprocessing", preprocessor_inv),
+                        ("classifier", candidate_models[chosen_name])])
+    search = RandomizedSearchCV(
+        pipeline, param_distributions=param_grids[chosen_name], n_iter=4,
+        scoring="roc_auc", cv=TimeSeriesSplit(n_splits=CV_SPLITS),
+        random_state=RANDOM_STATE, n_jobs=-1, verbose=1
+    )
+    search.fit(X_train_inv, y_train)
+    investor_model = search.best_estimator_
+    print("Best params:", search.best_params_)
+
+    # =========================
+    # 5. Investor Model -- evaluation, calibration, threshold, importance
+    # =========================
+    train_proba = investor_model.predict_proba(X_train_inv)[:, 1]
+    test_proba = investor_model.predict_proba(X_test_inv)[:, 1]
+    train_auc = roc_auc_score(y_train, train_proba)
+    test_auc = roc_auc_score(y_test, test_proba)
+    print(f"Investor Model -- Train AUC: {train_auc:.4f} | Test AUC: {test_auc:.4f} "
+          f"| Gap: {train_auc - test_auc:.4f}")
+
+    investor_metrics = evaluate_model(
+        y_test, (test_proba >= 0.5).astype(int), test_proba, "Investor Model")
+
+    avg_loan_amount = float(train_df["loan_amnt"].mean())
+    threshold_result = find_optimal_threshold(
+        y_test, test_proba, avg_loan_amount,
+        loss_given_default_pct=LGD_PCT, lost_margin_pct=MARGIN_PCT
+    )
+    print(
+        f"Optimal decision threshold: {threshold_result['optimal_threshold']}")
+
+    perm_result = permutation_importance(
+        investor_model, X_test_inv, y_test, n_repeats=5,
+        random_state=RANDOM_STATE, scoring="roc_auc", n_jobs=-1
+    )
+    perm_importance = pd.Series(
+        perm_result.importances_mean, index=INVESTOR_FEATURES
+    ).sort_values(ascending=False)
+    print("Top permutation importances:\n", perm_importance.head(10))
+
+    # =========================
+    # 6. Underwriting Model -- same model type/params, borrower-only features
+    # =========================
+    X_train_uw = train_df[UNDERWRITING_FEATURES]
+    X_test_uw = test_df[UNDERWRITING_FEATURES]
+    num_cols_uw, cat_cols_uw = get_feature_types(X_train_uw)
+    preprocessor_uw = build_preprocessor(num_cols_uw, cat_cols_uw)
+
+    underwriting_model = Pipeline([
+        ("preprocessing", preprocessor_uw),
+        ("classifier", candidate_models[chosen_name]),
+    ])
+    underwriting_model.set_params(**{
+        k: v for k, v in search.best_params_.items() if k in underwriting_model.get_params()
+    })
+    underwriting_model.fit(X_train_uw, y_train)
+    uw_test_proba = underwriting_model.predict_proba(X_test_uw)[:, 1]
+    uw_test_auc = roc_auc_score(y_test, uw_test_proba)
+    print(f"Underwriting Model Test AUC: {uw_test_auc:.4f} "
+          f"(gap vs Investor Model attributable to sub_grade/int_rate: {test_auc - uw_test_auc:.4f})")
+
+    # =========================
+    # 7. Save everything
+    # =========================
+    joblib.dump(investor_model, os.path.join(
+        MODEL_DIR, "credit_risk_model_investor.joblib"))
+    joblib.dump(INVESTOR_FEATURES, os.path.join(
+        MODEL_DIR, "expected_features_investor.joblib"))
+    joblib.dump(underwriting_model, os.path.join(
+        MODEL_DIR, "credit_risk_model_underwriting.joblib"))
+    joblib.dump(UNDERWRITING_FEATURES, os.path.join(
+        MODEL_DIR, "expected_features_underwriting.joblib"))
+    joblib.dump(caps, os.path.join(MODEL_DIR, "feature_caps.joblib"))
+
+    metrics = {
+        "chosen_model_type": chosen_name,
+        "best_params": search.best_params_,
+        "split_date": str(split_date),
+        "baselines": {
+            "majority_class_accuracy": majority_baseline_acc,
+            "subgrade_alone_auc": subgrade_baseline_auc,
+        },
+        "investor_model": {
+            "train_roc_auc": float(train_auc),
+            "test_roc_auc": float(test_auc),
+            "brier_score": investor_metrics["brier_score"],
+            "optimal_threshold": threshold_result["optimal_threshold"],
+            "threshold_cost_assumptions": threshold_result["assumptions"],
+            "top_permutation_importances": perm_importance.head(10).to_dict(),
+        },
+        "underwriting_model": {
+            "test_roc_auc": float(uw_test_auc),
+        },
+    }
+    save_metrics(metrics, os.path.join(MODEL_DIR, "model_metrics.json"))
+    print(f"\nSaved both models, feature caps, and metrics to {MODEL_DIR}")
+
+
+if __name__ == "__main__":
+    main()
