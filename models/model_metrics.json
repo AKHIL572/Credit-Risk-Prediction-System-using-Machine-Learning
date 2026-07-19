@@ -1,5 +1,20 @@
 {
-    "model_name": "Random Forest",
-    "roc_auc": 0.0,
-    "classification_report": {}
+  "chosen_model_type": "Logistic Regression",
+  "best_params": {
+    "classifier__C": 0.01
+  },
+  "split_date": "2016-10-01 00:00:00",
+  "baselines": {
+    "majority_class_accuracy": 0.7822,
+    "subgrade_alone_auc": 0.6797
+  },
+  "investor_model": {
+    "train_roc_auc": 0.7128836213908826,
+    "test_roc_auc": 0.6968266386525142,
+    "brier_score": 0.21981745189380247,
+    "optimal_threshold": 0.4
+  },
+  "underwriting_model": {
+    "test_roc_auc": 0.6877371318610949
+  }
 }
