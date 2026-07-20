@@ -559,10 +559,14 @@ The dashboard is built from the processed CSV files generated during the busines
 
 | Metric | Value |
 |---|---|
-| Selected model type | Logistic Regression |
-| Investor Model — Test ROC-AUC | 0.89 |
-| Underwriting Model — Test ROC-AUC | 0.81 |
-| Baseline ROC-AUC | 0.74 |
+| Selected model | Logistic Regression |
+| Investor Model — Test ROC-AUC | 0.6968 |
+| Underwriting Model — Test ROC-AUC | 0.6877 |
+| sub_grade-alone baseline AUC | 0.6797 |
+| Majority-class baseline accuracy | 0.7822 |
+| Train/test AUC gap | 0.0161 (no overfitting) |
+| Brier score | 0.2198 |
+| Optimal decision threshold | 0.40 |
 
 **Default rate by grade** (from `data/processed/dashboard_risk_by_grade.csv`): ranges from approximately **6% (Grade A)** to **50% (Grade G)**.
 
