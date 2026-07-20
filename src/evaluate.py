@@ -63,7 +63,11 @@ def find_optimal_threshold(
     costs = []
     for t in thresholds:
         preds = (y_proba >= t).astype(int)
-        tn, fp, fn, tp = confusion_matrix(y_true, preds).ravel()
+        tn, fp, fn, tp = confusion_matrix(
+            y_true,
+            preds,
+            labels=[0, 1]
+        ).ravel()
         costs.append(fn * cost_fn + fp * cost_fp)
 
     costs = np.array(costs)

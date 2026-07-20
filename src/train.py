@@ -147,22 +147,52 @@ def main():
         cv_results[name] = scores
         print(f"{name}: mean ROC-AUC = {scores.mean():.4f} (+/- {scores.std():.4f})")
 
-    # Explicit selection rule -- a more complex model must beat the simplest
-    # by more than IMPROVEMENT_THRESHOLD, backed by a paired t-test. This is
-    # the fix for the original project's unjustified Random Forest selection.
+    # ==========================================================
+    # # Explicit model-selection rule
+    # #
+    # # A more complex model is only selected if:
+    # # 1. It improves mean CV ROC-AUC by more than IMPROVEMENT_THRESHOLD.
+    # # 2. The improvement is statistically significant (paired t-test, p < 0.05).
+    # #
+    # # Otherwise, keep the simplest model.
+    # # ==========================================================
     chosen_name = simplicity_order[0]
-    baseline_mean = cv_results[chosen_name].mean()
+    baseline_name = simplicity_order[0]
+    baseline_scores = cv_results[baseline_name]
+    
+    print("\nModel selection comparisons:")
     for name in simplicity_order[1:]:
-        improvement = cv_results[name].mean() - baseline_mean
+        candidate_scores = cv_results[name]
+        
+        improvement = (
+            candidate_scores.mean() -
+            baseline_scores.mean()
+            )
+        
         t_stat, p_val = stats.ttest_rel(
-            cv_results[name], cv_results[simplicity_order[0]])
+            candidate_scores,
+            baseline_scores
+            )
+            
         print(
-            f"{name} vs {simplicity_order[0]}: +{improvement:.4f} AUC, p={p_val:.4f}")
-        if improvement > IMPROVEMENT_THRESHOLD:
+            f"{name} vs {baseline_name}: "
+            f"+{improvement:.4f} AUC | "
+            f"p = {p_val:.4f}"
+        )
+        
+        if (
+            improvement > IMPROVEMENT_THRESHOLD
+            and p_val < 0.05
+        ):
             chosen_name = name
-            baseline_mean = cv_results[name].mean()
-    print(f"Selected model: {chosen_name} "
-          f"(no more complex model exceeded the simplest by more than {IMPROVEMENT_THRESHOLD} mean AUC)")
+            baseline_name = name
+            baseline_scores = candidate_scores
+            
+    print(
+        f"\nSelected model: {chosen_name} "
+        f"(required > {IMPROVEMENT_THRESHOLD:.4f} mean AUC improvement "
+        f"AND p < 0.05)"
+    )
 
     param_grids = {
         "Logistic Regression": {"classifier__C": [0.01, 0.1, 1, 10]},
