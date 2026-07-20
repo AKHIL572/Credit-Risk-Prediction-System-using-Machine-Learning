@@ -1,10 +1,10 @@
-streamlit
+streamlit==1.xx.x
 pandas==2.3.3
 numpy==2.3.4
 scikit-learn==1.7.2
 joblib==1.5.2
-matplotlib
-seaborn
-scipy
-pyyaml
-plotly
+matplotlib==3.x.x
+seaborn==0.x.x
+scipy==1.x.x
+PyYAML==6.x.x
+plotly==6.x.x
